@@ -11,13 +11,13 @@ from aiogram.filters import Command
 # =============================================
 # ===== НАСТРОЙКИ =====
 # =============================================
-BOT_TOKEN = "8996281069:AAFekiIx20ojqZpWBcvbEGryoytp5c1-0IM"  # ТВОЙ ТОКЕН
+BOT_TOKEN = "8996281069:AAH14ZsKMJrr8_ap6JgTJbD5HmKNg5v4KMc"  # НОВЫЙ ТОКЕН
 WEBAPP_URL = "https://sanixunpopi-lab.github.io/bytegames-casino/"
 ADMIN_ID = 8698280423
 ADMIN_USERNAME = "boardrd"
 
 # Для Webhook (Bytecoin)
-WEBHOOK_SECRET = "whsec_7HpCA7OJfbQDBiX5MD4anPq_cnvvtuCs33oF4SQjh1c"  # Твой секрет
+WEBHOOK_SECRET = "whsec_7HpCA7OJfbQDBiX5MD4anPq_cnvvtuCs33oF4SQjh1c"
 
 logging.basicConfig(level=logging.INFO)
 
@@ -27,8 +27,6 @@ dp = Dispatcher()
 # =============================================
 # ===== ВРЕМЕННАЯ БАЗА ДАННЫХ (В ПАМЯТИ) =====
 # =============================================
-# В реальном проекте используй SQLite/PostgreSQL
-# Здесь хранятся балансы пользователей (для демонстрации)
 user_balances = {}
 
 def get_balance(user_id):
@@ -52,10 +50,6 @@ def bytecoin_webhook():
         data = request.get_json()
         logging.info(f"📩 Получен Webhook: {data}")
 
-        # 1. Проверяем, что это наш Webhook (по секрету)
-        # В реальном проекте проверяй заголовок X-Bytecoin-Signature
-        
-        # 2. Извлекаем данные (зависит от формата Bytecoin)
         user_id = data.get('user_id') or data.get('userId') or data.get('user')
         amount = data.get('amount') or data.get('total_amount') or data.get('value')
         
@@ -63,16 +57,11 @@ def bytecoin_webhook():
             logging.warning("⚠️ Не найдены user_id или amount в запросе")
             return jsonify({"status": "error", "message": "Missing user_id or amount"}), 400
 
-        # Конвертируем в числа
         user_id = int(user_id)
         amount = float(amount)
 
-        # 3. Зачисляем деньги пользователю
         new_balance = add_balance(user_id, amount)
         logging.info(f"✅ Зачислено {amount} BCN пользователю {user_id}. Новый баланс: {new_balance}")
-
-        # Здесь можно отправить уведомление пользователю в Telegram
-        # await bot.send_message(user_id, f"💰 Пополнение на {amount} BCN")
 
         return jsonify({"status": "success", "balance": new_balance}), 200
 
@@ -153,13 +142,16 @@ def run_flask():
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 async def main():
+    # Жесткий сброс вебхука — УБИВАЕТ КОНФЛИКТЫ
+    await bot.delete_webhook(drop_pending_updates=True)
+    await bot.set_webhook(url="")  # Очищаем вебхук
+    
     # Запускаем Flask в фоновом потоке
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     logging.info(f"🚀 Flask сервер для Webhook запущен на порту {os.environ.get('PORT', 10000)}")
 
     # Запускаем Telegram бота
-    await bot.delete_webhook(drop_pending_updates=True)
     logging.info("🤖 Telegram бот запущен!")
     await dp.start_polling(bot)
 
