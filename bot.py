@@ -6,6 +6,7 @@ import time
 import threading
 import aiohttp
 from flask import Flask, request, jsonify
+from flask_cors import CORS
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, WebAppInfo
 from aiogram.filters import Command
@@ -13,14 +14,14 @@ from aiogram.filters import Command
 # =============================================
 # ===== НАСТРОЙКИ =====
 # =============================================
-BOT_TOKEN = "8996281069:AAHDEG2xn293Tzsuhf1Pn-2THe2pu179pbk"
+BOT_TOKEN = "8996281069:AAHHAyq0OMdLXXreownMoVuGkVISnQn14gI"  # СМЕНИ ЧЕРЕЗ /revoke!
 WEBAPP_URL = "https://sanixunpopi-lab.github.io/bytegames-casino/"
 ADMIN_ID = 8698280423
 ADMIN_USERNAME = "boardrd"
 WEBHOOK_SECRET = "whsec_7HpCA7OJfbQDBiX5MD4anPq_cnvvtuCs33oF4SQjh1c"
 
 # ===== BYTECOIN API =====
-BYTECOIN_API_KEY = "bc_live_ZL_wrwnBohl--hIbC6uRm6IdRCZcHBF1sWT664-0r9A"
+BYTECOIN_API_KEY = "bc_live_ZL_wrwnBohl--hIbC6uRm6IdRCZcHBF1sWT664-0r9A"  # СМЕНИ!
 BYTECOIN_API_URL = "https://api.bytecoin.com/v1/invoice/create"
 BYTECOIN_WEBHOOK_URL = "https://bytegames-webhook-1.onrender.com/webhook/bytecoin"
 
@@ -44,17 +45,21 @@ def add_balance(user_id, amount):
     user_balances[user_id]['balance'] += amount
     return user_balances[user_id]['balance']
 
+def set_balance(user_id, amount):
+    if user_id not in user_balances:
+        user_balances[user_id] = {'balance': 0}
+    user_balances[user_id]['balance'] = amount
+    return amount
+
 # =============================================
 # ===== СОЗДАНИЕ СЧЁТА =====
 # =============================================
 async def create_bytecoin_invoice(user_id, amount):
     order_id = f"user_{user_id}_{int(time.time())}"
-
     headers = {
         "Authorization": f"Bearer {BYTECOIN_API_KEY}",
         "Content-Type": "application/json"
     }
-
     payload = {
         "amount": str(amount),
         "currency": "BYTECOIN",
@@ -63,13 +68,11 @@ async def create_bytecoin_invoice(user_id, amount):
         "payload": str(user_id),
         "description": f"Пополнение баланса игрока {user_id}"
     }
-
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(BYTECOIN_API_URL, json=payload, headers=headers) as resp:
                 data = await resp.json()
                 logging.info(f"📤 Ответ Bytecoin API: {data}")
-
                 if resp.status == 200:
                     invoice_url = (
                         data.get("url") or
@@ -81,10 +84,8 @@ async def create_bytecoin_invoice(user_id, amount):
                         data.get("result", {}).get("uuid") or
                         data.get("invoice_id")
                     )
-
                     if invoice_id:
                         pending_invoices[invoice_id] = user_id
-
                     return invoice_url
                 else:
                     logging.error(f"❌ Ошибка создания счёта: {data}")
@@ -94,9 +95,10 @@ async def create_bytecoin_invoice(user_id, amount):
         return None
 
 # =============================================
-# ===== FLASK WEBHOOK (ИСПРАВЛЕНО!) =====
+# ===== FLASK СЕРВЕР =====
 # =============================================
 app = Flask(__name__)
+CORS(app)  # Разрешаем запросы из WebApp
 
 @app.route('/webhook/bytecoin', methods=['POST'])
 def bytecoin_webhook():
@@ -104,21 +106,17 @@ def bytecoin_webhook():
         raw = request.get_json(silent=True) or request.form.to_dict() or {}
         logging.info(f"📩 WEBHOOK ОТ BYTECOIN: {raw}")
 
-        # ===== ДАННЫЕ ВСЕГДА ВНУТРИ 'data' =====
         data = raw.get('data', raw)
         event = raw.get('event', '')
 
-        # Проверяем что это входящий перевод
         if event and event != 'transfer.received':
             logging.info(f"ℹ️ Игнорируем событие: {event}")
             return jsonify({"status": "ok"}), 200
 
-        # ===== БЕРЁМ USER_ID (это ID отправителя) =====
         user_id = data.get('user_id')
         amount_raw = data.get('sum')
         side = data.get('side')
 
-        # Проверяем что перевод на сервис
         if side and side != 'to_service':
             logging.info(f"ℹ️ Игнорируем перевод: side={side}")
             return jsonify({"status": "ok"}), 200
@@ -127,11 +125,9 @@ def bytecoin_webhook():
             logging.warning(f"⚠️ Нет user_id или sum. Данные: {data}")
             return jsonify({"status": "ok"}), 200
 
-        # ===== ПРЕОБРАЗУЕМ =====
         user_id = int(user_id)
         amount = float(str(amount_raw).replace(',', '.'))
 
-        # ===== ЗАЧИСЛЯЕМ =====
         new_balance = add_balance(user_id, amount)
         logging.info(f"✅ ЗАЧИСЛЕНО {amount} BCN игроку {user_id}. Баланс: {new_balance}")
 
@@ -145,6 +141,28 @@ def bytecoin_webhook():
 @app.route('/webhook/bytecoin', methods=['GET'])
 def webhook_check():
     return jsonify({"status": "ok", "message": "Webhook is alive"}), 200
+
+
+@app.route('/balance/<int:user_id>', methods=['GET'])
+def get_user_balance(user_id):
+    """Отдаёт баланс игрока для WebApp"""
+    bal = get_balance(user_id)
+    logging.info(f"📊 Запрос баланса для {user_id}: {bal}")
+    return jsonify({"user_id": user_id, "balance": bal}), 200
+
+
+@app.route('/balance/<int:user_id>', methods=['POST'])
+def set_user_balance(user_id):
+    """Устанавливает баланс игрока (для игр из WebApp)"""
+    try:
+        data = request.get_json() or {}
+        new_bal = float(data.get('balance', 0))
+        set_balance(user_id, new_bal)
+        logging.info(f"💾 Баланс игрока {user_id} обновлён: {new_bal}")
+        return jsonify({"status": "ok", "balance": new_bal}), 200
+    except Exception as e:
+        logging.error(f"❌ Ошибка обновления баланса: {e}")
+        return jsonify({"status": "error"}), 500
 
 
 @app.route('/')
