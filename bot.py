@@ -13,7 +13,7 @@ from aiogram.filters import Command
 # =============================================
 # ===== НАСТРОЙКИ =====
 # =============================================
-BOT_TOKEN = "8996281069:AAGiHsMN8E7iGgKB4ZUa1Cp9aeULsFD2BU8"
+BOT_TOKEN = "8996281069:AAHHAyq0OMdLXXreownMoVuGkVISnQn14gI"
 WEBAPP_URL = "https://sanixunpopi-lab.github.io/bytegames-casino/"
 ADMIN_ID = 8698280423
 ADMIN_USERNAME = "boardrd"
@@ -22,7 +22,7 @@ WEBHOOK_SECRET = "whsec_7HpCA7OJfbQDBiX5MD4anPq_cnvvtuCs33oF4SQjh1c"
 # ===== BYTECOIN API =====
 BYTECOIN_API_KEY = "bc_live_ZL_wrwnBohl--hIbC6uRm6IdRCZcHBF1sWT664-0r9A"
 BYTECOIN_API_URL = "https://api.bytecoin.com/v1/invoice/create"
-BYTECOIN_WEBHOOK_URL = "https://bytegames-webhook.onrender.com/webhook/bytecoin"
+BYTECOIN_WEBHOOK_URL = "https://bytegames-webhook-1.onrender.com/webhook/bytecoin"
 
 logging.basicConfig(level=logging.INFO)
 
@@ -94,39 +94,44 @@ async def create_bytecoin_invoice(user_id, amount):
         return None
 
 # =============================================
-# ===== FLASK WEBHOOK =====
+# ===== FLASK WEBHOOK (ИСПРАВЛЕНО!) =====
 # =============================================
 app = Flask(__name__)
 
 @app.route('/webhook/bytecoin', methods=['POST'])
 def bytecoin_webhook():
     try:
-        data = request.get_json(silent=True) or request.form.to_dict() or {}
-        logging.info(f"📩 WEBHOOK ОТ BYTECOIN: {data}")
+        raw = request.get_json(silent=True) or request.form.to_dict() or {}
+        logging.info(f"📩 WEBHOOK ОТ BYTECOIN: {raw}")
 
-        user_id = None
-        for key in ['payload', 'order_id', 'additional_data', 'custom_data', 'comment', 'memo']:
-            if key in data and data[key]:
-                digits = re.findall(r'\d{5,}', str(data[key]))
-                if digits:
-                    user_id = int(digits[0])
-                    logging.info(f"✅ Найден user_id в поле '{key}': {user_id}")
-                    break
+        # ===== ДАННЫЕ ВСЕГДА ВНУТРИ 'data' =====
+        data = raw.get('data', raw)
+        event = raw.get('event', '')
 
-        amount = None
-        for key in ['amount', 'value', 'sum', 'total', 'received_amount', 'payment_amount']:
-            if key in data and data[key]:
-                try:
-                    amount = float(str(data[key]).replace(',', '.'))
-                    logging.info(f"✅ Найдена сумма в поле '{key}': {amount}")
-                    break
-                except:
-                    pass
-
-        if not user_id or not amount:
-            logging.warning(f"⚠️ Не найдены user_id или amount. Данные: {data}")
+        # Проверяем что это входящий перевод
+        if event and event != 'transfer.received':
+            logging.info(f"ℹ️ Игнорируем событие: {event}")
             return jsonify({"status": "ok"}), 200
 
+        # ===== БЕРЁМ USER_ID (это ID отправителя) =====
+        user_id = data.get('user_id')
+        amount_raw = data.get('sum')
+        side = data.get('side')
+
+        # Проверяем что перевод на сервис
+        if side and side != 'to_service':
+            logging.info(f"ℹ️ Игнорируем перевод: side={side}")
+            return jsonify({"status": "ok"}), 200
+
+        if not user_id or not amount_raw:
+            logging.warning(f"⚠️ Нет user_id или sum. Данные: {data}")
+            return jsonify({"status": "ok"}), 200
+
+        # ===== ПРЕОБРАЗУЕМ =====
+        user_id = int(user_id)
+        amount = float(str(amount_raw).replace(',', '.'))
+
+        # ===== ЗАЧИСЛЯЕМ =====
         new_balance = add_balance(user_id, amount)
         logging.info(f"✅ ЗАЧИСЛЕНО {amount} BCN игроку {user_id}. Баланс: {new_balance}")
 
@@ -147,7 +152,7 @@ def index():
     return jsonify({"status": "ok", "message": "ByteGames Bot is running"}), 200
 
 # =============================================
-# ===== КОМАНДЫ =====
+# ===== КОМАНДЫ БОТА =====
 # =============================================
 @dp.message(Command("start"))
 async def start(message: types.Message):
