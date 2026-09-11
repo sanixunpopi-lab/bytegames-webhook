@@ -14,7 +14,7 @@ from aiogram.filters import Command
 # =============================================
 # ===== НАСТРОЙКИ =====
 # =============================================
-BOT_TOKEN = "8996281069:AAETaEqFkt_Uty5RINSbyxP3KKwlmvAMgFI"  # СМЕНИ ЧЕРЕЗ /revoke!
+BOT_TOKEN = "ВСТАВЬ_СЮДА_НОВЫЙ_ТОКЕН_ОТ_BOTFATHER"  # /revoke → новый токен
 WEBAPP_URL = "https://sanixunpopi-lab.github.io/bytegames-casino/"
 ADMIN_ID = 8698280423
 ADMIN_USERNAME = "boardrd"
@@ -98,7 +98,7 @@ async def create_bytecoin_invoice(user_id, amount):
 # ===== FLASK СЕРВЕР =====
 # =============================================
 app = Flask(__name__)
-CORS(app)  # Разрешаем запросы из WebApp
+CORS(app)
 
 @app.route('/webhook/bytecoin', methods=['POST'])
 def bytecoin_webhook():
@@ -145,7 +145,6 @@ def webhook_check():
 
 @app.route('/balance/<int:user_id>', methods=['GET'])
 def get_user_balance(user_id):
-    """Отдаёт баланс игрока для WebApp"""
     bal = get_balance(user_id)
     logging.info(f"📊 Запрос баланса для {user_id}: {bal}")
     return jsonify({"user_id": user_id, "balance": bal}), 200
@@ -153,12 +152,11 @@ def get_user_balance(user_id):
 
 @app.route('/balance/<int:user_id>', methods=['POST'])
 def set_user_balance(user_id):
-    """Устанавливает баланс игрока (для игр из WebApp)"""
     try:
         data = request.get_json() or {}
         new_bal = float(data.get('balance', 0))
         set_balance(user_id, new_bal)
-        logging.info(f"💾 Баланс игрока {user_id} обновлён: {new_bal}")
+        logging.info(f"💾 Баланс {user_id} = {new_bal}")
         return jsonify({"status": "ok", "balance": new_bal}), 200
     except Exception as e:
         logging.error(f"❌ Ошибка обновления баланса: {e}")
@@ -174,8 +172,17 @@ def index():
 # =============================================
 @dp.message(Command("start"))
 async def start(message: types.Message):
+    args = message.text.split()
+    if len(args) > 1 and args[1] == 'deposit':
+        await message.answer(
+            "💰 Введи сумму пополнения (минимум 10 BCN):\n\nНапример: `100`",
+            parse_mode="Markdown"
+        )
+        return
+
     keyboard = InlineKeyboardMarkup(inline_keyboard=[
         [InlineKeyboardButton(text="🎰 Играть в ByteGames", web_app=WebAppInfo(url=WEBAPP_URL))],
+        [InlineKeyboardButton(text="💰 Пополнить", callback_data="deposit")],
         [InlineKeyboardButton(text="📢 Наш канал", url="https://t.me/bytecasinos")],
         [InlineKeyboardButton(text="💬 Поддержка", url="https://t.me/boardrd")]
     ])
@@ -189,6 +196,14 @@ async def start(message: types.Message):
         reply_markup=keyboard,
         parse_mode="Markdown"
     )
+
+@dp.callback_query(lambda c: c.data == "deposit")
+async def deposit_callback(callback: types.CallbackQuery):
+    await callback.message.answer(
+        "💰 Введи сумму пополнения (минимум 10 BCN):\n\nНапример: `100`",
+        parse_mode="Markdown"
+    )
+    await callback.answer()
 
 @dp.message(Command("balance"))
 async def balance(message: types.Message):
