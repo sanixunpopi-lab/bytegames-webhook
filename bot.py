@@ -13,7 +13,7 @@ from aiogram.filters import Command
 # =============================================
 # ===== НАСТРОЙКИ =====
 # =============================================
-BOT_TOKEN = "8996281069:AAHHAyq0OMdLXXreownMoVuGkVISnQn14gI"
+BOT_TOKEN = "8996281069:AAHDEG2xn293Tzsuhf1Pn-2THe2pu179pbk"
 WEBAPP_URL = "https://sanixunpopi-lab.github.io/bytegames-casino/"
 ADMIN_ID = 8698280423
 ADMIN_USERNAME = "boardrd"
