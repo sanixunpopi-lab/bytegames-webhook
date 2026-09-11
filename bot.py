@@ -14,7 +14,7 @@ from aiogram.filters import Command
 # =============================================
 # ===== НАСТРОЙКИ =====
 # =============================================
-BOT_TOKEN = "ВСТАВЬ_СЮДА_НОВЫЙ_ТОКЕН_ОТ_BOTFATHER"  # /revoke → новый токен
+BOT_TOKEN = "8996281069:AAG3omONZM0WJMml4h66hS6oLVXktbxLN9U"  # /revoke → новый токен
 WEBAPP_URL = "https://sanixunpopi-lab.github.io/bytegames-casino/"
 ADMIN_ID = 8698280423
 ADMIN_USERNAME = "boardrd"
