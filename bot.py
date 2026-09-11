@@ -14,7 +14,7 @@ from aiogram.filters import Command
 # =============================================
 # ===== НАСТРОЙКИ =====
 # =============================================
-BOT_TOKEN = "8996281069:AAHHAyq0OMdLXXreownMoVuGkVISnQn14gI"  # СМЕНИ ЧЕРЕЗ /revoke!
+BOT_TOKEN = "8996281069:AAETaEqFkt_Uty5RINSbyxP3KKwlmvAMgFI"  # СМЕНИ ЧЕРЕЗ /revoke!
 WEBAPP_URL = "https://sanixunpopi-lab.github.io/bytegames-casino/"
 ADMIN_ID = 8698280423
 ADMIN_USERNAME = "boardrd"
