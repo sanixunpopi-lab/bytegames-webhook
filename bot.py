@@ -13,7 +13,7 @@ from aiogram.filters import Command
 # =============================================
 # ===== НАСТРОЙКИ =====
 # =============================================
-BOT_TOKEN = "8996281069:AAH14ZsKMJrr8_ap6JgTJbD5HmKNg5v4KMc"
+BOT_TOKEN = "8996281069:AAHHAyq0OMdLXXreownMoVuGkVISnQn14gI"
 WEBAPP_URL = "https://sanixunpopi-lab.github.io/bytegames-casino/"
 ADMIN_ID = 8698280423
 ADMIN_USERNAME = "boardrd"
@@ -21,8 +21,8 @@ WEBHOOK_SECRET = "whsec_7HpCA7OJfbQDBiX5MD4anPq_cnvvtuCs33oF4SQjh1c"
 
 # ===== BYTECOIN API =====
 BYTECOIN_API_KEY = "bc_live_ZL_wrwnBohl--hIbC6uRm6IdRCZcHBF1sWT664-0r9A"
-BYTECOIN_API_URL = "https://api.bytecoin.com/v1/invoice/create"  # ЗАМЕНИ на URL из документации!
-BYTECOIN_WEBHOOK_URL = "https://bytegames-webhook-1.onrender.com/webhook/bytecoin"
+BYTECOIN_API_URL = "https://api.bytecoin.com/v1/invoice/create"
+BYTECOIN_WEBHOOK_URL = "https://bytegames-webhook.onrender.com/webhook/bytecoin"
 
 logging.basicConfig(level=logging.INFO)
 
@@ -33,7 +33,7 @@ dp = Dispatcher()
 # ===== ВРЕМЕННАЯ БАЗА =====
 # =============================================
 user_balances = {}
-pending_invoices = {}  # {invoice_id: user_id}
+pending_invoices = {}
 
 def get_balance(user_id):
     return user_balances.get(user_id, {}).get('balance', 0)
@@ -45,49 +45,46 @@ def add_balance(user_id, amount):
     return user_balances[user_id]['balance']
 
 # =============================================
-# ===== СОЗДАНИЕ СЧЁТА ЧЕРЕЗ API BYTECOIN =====
+# ===== СОЗДАНИЕ СЧЁТА =====
 # =============================================
 async def create_bytecoin_invoice(user_id, amount):
-    """Создаёт персональный счёт в Bytecoin через API"""
     order_id = f"user_{user_id}_{int(time.time())}"
-    
+
     headers = {
         "Authorization": f"Bearer {BYTECOIN_API_KEY}",
         "Content-Type": "application/json"
     }
-    
-    # ВАЖНО: Эти параметры могут отличаться! Смотри документацию Bytecoin.
+
     payload = {
         "amount": str(amount),
-        "currency": "BYTECOIN",  # или "BCN" — уточни в документации
+        "currency": "BYTECOIN",
         "order_id": order_id,
         "url_callback": BYTECOIN_WEBHOOK_URL,
-        "payload": str(user_id),  # сюда кладём user_id
+        "payload": str(user_id),
         "description": f"Пополнение баланса игрока {user_id}"
     }
-    
+
     try:
         async with aiohttp.ClientSession() as session:
             async with session.post(BYTECOIN_API_URL, json=payload, headers=headers) as resp:
                 data = await resp.json()
                 logging.info(f"📤 Ответ Bytecoin API: {data}")
-                
+
                 if resp.status == 200:
-                    # Извлекаем URL для оплаты (может быть в разных полях!)
                     invoice_url = (
-                        data.get("url") or 
+                        data.get("url") or
                         data.get("result", {}).get("url") or
                         data.get("payment_url")
                     )
                     invoice_id = (
-                        data.get("uuid") or 
+                        data.get("uuid") or
                         data.get("result", {}).get("uuid") or
                         data.get("invoice_id")
                     )
-                    
+
                     if invoice_id:
                         pending_invoices[invoice_id] = user_id
-                    
+
                     return invoice_url
                 else:
                     logging.error(f"❌ Ошибка создания счёта: {data}")
@@ -103,12 +100,10 @@ app = Flask(__name__)
 
 @app.route('/webhook/bytecoin', methods=['POST'])
 def bytecoin_webhook():
-    """Приём Webhook от Bytecoin"""
     try:
         data = request.get_json(silent=True) or request.form.to_dict() or {}
         logging.info(f"📩 WEBHOOK ОТ BYTECOIN: {data}")
 
-        # 1. Ищем user_id (в payload, order_id или additional_data)
         user_id = None
         for key in ['payload', 'order_id', 'additional_data', 'custom_data', 'comment', 'memo']:
             if key in data and data[key]:
@@ -118,7 +113,6 @@ def bytecoin_webhook():
                     logging.info(f"✅ Найден user_id в поле '{key}': {user_id}")
                     break
 
-        # 2. Ищем amount
         amount = None
         for key in ['amount', 'value', 'sum', 'total', 'received_amount', 'payment_amount']:
             if key in data and data[key]:
@@ -129,12 +123,10 @@ def bytecoin_webhook():
                 except:
                     pass
 
-        # 3. Если данных нет — отвечаем 200
         if not user_id or not amount:
             logging.warning(f"⚠️ Не найдены user_id или amount. Данные: {data}")
             return jsonify({"status": "ok"}), 200
 
-        # 4. Зачисляем
         new_balance = add_balance(user_id, amount)
         logging.info(f"✅ ЗАЧИСЛЕНО {amount} BCN игроку {user_id}. Баланс: {new_balance}")
 
@@ -154,9 +146,8 @@ def webhook_check():
 def index():
     return jsonify({"status": "ok", "message": "ByteGames Bot is running"}), 200
 
-
 # =============================================
-# ===== КОМАНДЫ БОТА =====
+# ===== КОМАНДЫ =====
 # =============================================
 @dp.message(Command("start"))
 async def start(message: types.Message):
@@ -193,38 +184,36 @@ async def deposit_cmd(message: types.Message):
 async def process_deposit_amount(message: types.Message):
     user_id = message.from_user.id
     amount = int(message.text)
-    
+
     if amount < 10:
         await message.answer("❌ Минимальная сумма — 10 BCN")
         return
-    
+
     await message.answer("⏳ Создаём счёт...")
     invoice_url = await create_bytecoin_invoice(user_id, amount)
-    
+
     if invoice_url:
         keyboard = InlineKeyboardMarkup(inline_keyboard=[
             [InlineKeyboardButton(text="💳 Оплатить", url=invoice_url)]
         ])
         await message.answer(
-            f"✅ Счёт на {amount} BCN создан!\n\n"
-            f"Нажми кнопку ниже для оплаты:",
+            f"✅ Счёт на {amount} BCN создан!\n\nНажми кнопку ниже для оплаты:",
             reply_markup=keyboard
         )
     else:
-        await message.answer("❌ Не удалось создать счёт. Попробуй позже или напиши в поддержку @boardrd")
+        await message.answer("❌ Не удалось создать счёт. Попробуй позже или напиши @boardrd")
 
 @dp.message(Command("help"))
 async def help_cmd(message: types.Message):
     await message.answer(
         "❓ *Помощь*\n\n"
-        "🎮 Играть — нажми кнопку 'Играть в ByteGames'\n"
+        "🎮 Играть — нажми 'Играть в ByteGames'\n"
         "💰 Пополнить — команда /deposit\n"
-        "💸 Вывести — в приложении выбери 'Вывести'\n"
+        "💸 Вывести — в приложении 'Вывести'\n"
         "👥 Рефералы — приведи друга и получай 3%\n"
         "🎫 Промокоды — активируй в приложении",
         parse_mode="Markdown"
     )
-
 
 # =============================================
 # ===== ЗАПУСК =====
@@ -233,10 +222,15 @@ def run_flask():
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
-
 async def main():
-    await bot.delete_webhook(drop_pending_updates=True)
-    await bot.set_webhook(url="")
+    logging.info("🧹 Сбрасываем старые сессии Telegram...")
+    try:
+        await bot.delete_webhook(drop_pending_updates=True)
+        await bot.set_webhook(url="")
+        await asyncio.sleep(3)
+        logging.info("✅ Старые сессии сброшены")
+    except Exception as e:
+        logging.warning(f"⚠️ Ошибка сброса: {e}")
 
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
@@ -244,7 +238,6 @@ async def main():
 
     logging.info("🤖 Telegram бот запущен!")
     await dp.start_polling(bot)
-
 
 if __name__ == "__main__":
     asyncio.run(main())
